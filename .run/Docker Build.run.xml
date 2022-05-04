@@ -1,0 +1,52 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Docker" type="docker-deploy" factoryName="dockerfile" server-name="Docker">
+    <deployment type="dockerfile">
+      <settings>
+        <option name="containerName" value="tg_downloader" />
+        <option name="envVars">
+          <list>
+            <DockerEnvVarImpl>
+              <option name="name" value="TelegramSettings__ApiHash" />
+              <option name="value" value="4dcf9af0c05042ca938a0a44bfb522dd" />
+            </DockerEnvVarImpl>
+            <DockerEnvVarImpl>
+              <option name="name" value="TelegramSettings__ApiId" />
+              <option name="value" value="2252206" />
+            </DockerEnvVarImpl>
+            <DockerEnvVarImpl>
+              <option name="name" value="TelegramSettings__GroupId" />
+              <option name="value" value="" />
+            </DockerEnvVarImpl>
+            <DockerEnvVarImpl>
+              <option name="name" value="DownloadSettings__DownloadPath" />
+              <option name="value" value="/downloads" />
+            </DockerEnvVarImpl>
+            <DockerEnvVarImpl>
+              <option name="name" value="DownloadSettings__DownloadTempPath" />
+              <option name="value" value="/tmp" />
+            </DockerEnvVarImpl>
+            <DockerEnvVarImpl>
+              <option name="name" value="DownloadSettings__ExtensionFilter" />
+              <option name="value" value="pdf,epub,mobi,txt" />
+            </DockerEnvVarImpl>
+          </list>
+        </option>
+        <option name="sourceFilePath" value="TelegramGroupFileDownloader/Dockerfile" />
+        <option name="volumeBindings">
+          <list>
+            <DockerVolumeBindingImpl>
+              <option name="containerPath" value="/downloads" />
+              <option name="hostPath" value="/nas/Books/Unsorted/" />
+            </DockerVolumeBindingImpl>
+            <DockerVolumeBindingImpl>
+              <option name="containerPath" value="/tmp" />
+              <option name="hostPath" value="/nas/Downloads/temp" />
+            </DockerVolumeBindingImpl>
+          </list>
+        </option>
+      </settings>
+    </deployment>
+    <EXTENSION ID="com.jetbrains.rider.docker.debug" isFastModeEnabled="true" isPublishEnabled="false" />
+    <method v="2" />
+  </configuration>
+</component>

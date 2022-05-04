@@ -1,0 +1,6 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Publish to hwhost1" type="DotNetPublishAndUpload" factoryName="Publish to custom server">
+    <riderPublish configuration="Release" include_native_libs_for_self_extract="true" platform="Any CPU" produce_single_file="true" runtime="linux-x64" self_contained="true" server_id="16c9f968-ed6b-45bc-b952-85da6026d706" serverName="hwhost1" target_framework="net6.0" uuid_high="5107116434219421390" uuid_low="-7365398322252691457" />
+    <method v="2" />
+  </configuration>
+</component>
