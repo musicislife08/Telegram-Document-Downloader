@@ -8,8 +8,9 @@ public class CliOptions : CommandSettings
 {
         [Description("Enable Debug Logging")]
         [CommandOption( "-d|--debug")]
+        [DefaultValue(false)]
         public bool Debug { get; set; }
-        
+
         [Description("Enable Logging to a file.  Specify filename/path")]
         [CommandOption("-l|--log")]
         public string? LogPath { get; set; }
@@ -25,8 +26,7 @@ public class CliOptions : CommandSettings
                                 ? ValidationResult.Success() 
                                 : ValidationResult.Error("Specified log path invalid");
                 }
-                return LogPath.Length < 2
-                        ? ValidationResult.Error("Names must be at least two characters long")
-                        : ValidationResult.Success();
+                if (string.IsNullOrEmpty(info.Name))
+                        
         }
 }
