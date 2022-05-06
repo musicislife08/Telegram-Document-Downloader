@@ -32,6 +32,7 @@
       <Content Include="..\.gitignore">
         <Link>.gitignore</Link>
       </Content>
+      <Content Include="bin\Debug\net6.0\config.yaml" />
     </ItemGroup>
 
     <ItemGroup>
