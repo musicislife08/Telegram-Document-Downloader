@@ -10,8 +10,8 @@ steps:
      - name: publish
        path: /publish
    commands:
-    - dotnet publish /drone/src/TelegramGroupFileDownloader/TelegramGroupFileDownloader.csprj --output /publish --runtime linux-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesInSingleFile=true --configuration Release
-    - dotnet publish /drone/src/TelegramGroupFileDownloader/TelegramGroupFileDownloader.csprj --output /publish --runtime win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesInSingleFile=true --configuration Release
+    - dotnet publish /drone/src/Telegram-Document-Downloader/TelegramGroupFileDownloader/TelegramGroupFileDownloader.csprj --output /publish --runtime linux-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesInSingleFile=true --configuration Release
+    - dotnet publish /drone/src/Telegram-Document-Downloader/TelegramGroupFileDownloader/TelegramGroupFileDownloader.csprj --output /publish --runtime win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesInSingleFile=true --configuration Release
 #  - name: Deploy Site
 #    image: mcr.microsoft.com/azure-cli
 #    volumes:
