@@ -1,0 +1,15 @@
+EditProperties: F4
+ShowContextMenu: Enter
+ViewSpecificOperations: F4, ShiftMask
+EditRootProperties: F5
+ShowHelp: H, CtrlMask
+New: N, CtrlMask
+Open: O, CtrlMask
+Save: S, CtrlMask
+Redo: Y, CtrlMask
+Undo: Z, CtrlMask
+Delete: DeleteChar
+ToggleDragging: F3
+AddView: F2
+ToggleShowFocused: L, CtrlMask
+RightClick: Button3Clicked
