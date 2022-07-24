@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Docker" type="docker-deploy" factoryName="dockerfile" server-name="Docker">
+  <configuration default="false" name="TelegramTools.LegacyDownloader/Dockerfile: Compose Deployment" type="docker-deploy" factoryName="dockerfile" server-name="Docker">
     <deployment type="dockerfile">
       <settings>
         <option name="containerName" value="tg_downloader" />
@@ -31,7 +31,7 @@
             </DockerEnvVarImpl>
           </list>
         </option>
-        <option name="sourceFilePath" value="TelegramGroupFileDownloader/Dockerfile" />
+        <option name="sourceFilePath" value="TelegramTools.LegacyDownloader/Dockerfile" />
         <option name="volumeBindings">
           <list>
             <DockerVolumeBindingImpl>

@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>DF6351EC-56F0-4A66-9FB8-4400691685A0</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>TelegramTools.Database</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)DocumentContext.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)DocumentFile.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)DuplicateFile.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Migrations\20220426152527_UnicodeSupport.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Migrations\20220426152527_UnicodeSupport.Designer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Migrations\20220427131941_TelegramId.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Migrations\20220427131941_TelegramId.Designer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Migrations\20220427223009_TelegramIdFix.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Migrations\20220427223009_TelegramIdFix.Designer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Migrations\DocumentContextModelSnapshot.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,6 @@
+TempPath: /tmp/telegram_downloader
+UploadPath: /DataPool/Books/TestUpload
+PhoneNumber: +14026201410
+GroupName: TestGroup
+UnzipBeforeUpload: true
+DocumentExtensionFilter: .pdf,.doc,.docx,.xls,.csv,.xlsx,.txt,.epub,.mobi,.azw3,.azw,.zip,.rar,.7z,.tar.gz,.pptx,.djvu
