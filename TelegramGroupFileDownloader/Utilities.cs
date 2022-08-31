@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Mono.Unix;
 using Mono.Unix.Native;
 using Spectre.Console;
@@ -49,9 +51,38 @@ public static class Utilities
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             var info = new DirectoryInfo(path);
-            var permissions = info.GetAccessControl();
-            var x = "";
-            return new();
+            try
+            {
+                var rules = info.GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier));
+                var identity = WindowsIdentity.GetCurrent();
+
+                foreach (FileSystemAccessRule rule in rules)
+                {
+                    if (identity.Groups is null)
+                        return new()
+                        {
+                            IsSuccessful = false,
+                            Reason = $"Unable to determine permissions for {info.FullName}"
+                        };
+                    if (!identity.Groups.Contains(rule.IdentityReference)) continue;
+                    if (rule.FileSystemRights != FileSystemRights.Modify) continue;
+                    if (rule.AccessControlType == AccessControlType.Allow)
+                        return new()
+                        {
+                            IsSuccessful = true,
+                            Reason = $"Has Modify permissions for {info.FullName}"
+                        };
+                }
+            }
+            catch (Exception e)
+            {
+                return new()
+                {
+                    IsSuccessful = false,
+                    Exception = e,
+                    Reason = e.Message
+                };
+            }
         }
         else
         {
