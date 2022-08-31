@@ -50,42 +50,53 @@ public static class Utilities
             };
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            var info = new DirectoryInfo(path);
+            var di = new DirectoryInfo(path);
+            var isInRoleWithAccess = false;
+            var currentUser = WindowsIdentity.GetCurrent();
             try
             {
-                var rules = info.GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier));
-                var identity = WindowsIdentity.GetCurrent();
-                foreach (FileSystemAccessRule rule in rules)
+                var acl = di.GetAccessControl();
+                var rules = acl.GetAccessRules(true, true, typeof(NTAccount));
+                var principal = new WindowsPrincipal(currentUser);
+                foreach (AuthorizationRule rule in rules)
                 {
-                    if (identity.Groups is null)
+                    if (rule is not FileSystemAccessRule fsAccessRule)
+                        continue;
+
+                    if ((fsAccessRule.FileSystemRights & FileSystemRights.Write) <= 0) continue;
+                    var ntAccount = rule.IdentityReference as NTAccount;
+                    if (ntAccount == null)
+                        continue;
+
+                    if (!principal.IsInRole(ntAccount.Value)) continue;
+                    if (fsAccessRule.AccessControlType == AccessControlType.Deny)
                         return new()
                         {
                             IsSuccessful = false,
-                            Reason = $"Unable to determine permissions for {info.FullName}"
+                            Reason = $"Permission Denied for {di.FullName}"
                         };
-                    if (!identity.Groups.Contains(rule.IdentityReference)) continue;
-                    if (rule.FileSystemRights != FileSystemRights.Modify) continue;
-                    if (rule.AccessControlType == AccessControlType.Allow)
-                        return new()
-                        {
-                            IsSuccessful = true,
-                            Reason = $"Has Modify permissions for {info.FullName}"
-                        };
+                    isInRoleWithAccess = true;
                 }
             }
-            catch (Exception e)
+            catch (UnauthorizedAccessException e)
             {
                 return new()
                 {
-                    IsSuccessful = false,
                     Exception = e,
-                    Reason = e.Message
+                    Reason = e.Message,
+                    IsSuccessful = false
                 };
             }
+            if (isInRoleWithAccess)
+                return new()
+                {
+                    IsSuccessful = false,
+                    Reason = $"Unknown error getting file permissions for path {di.FullName}"
+                };
             return new()
             {
                 IsSuccessful = false,
-                Reason = $"Unknown error getting file permissions for path {info.FullName}"
+                Reason = $"{currentUser.Name} does not have permission to {path}"
             };
         }
         else
