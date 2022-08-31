@@ -12,7 +12,7 @@ public static class Utilities
 {
     public static void TestApplicationFolderPath()
     {
-        var logFilePathAccess = TestFolderPermissions(Environment.CurrentDirectory);
+        var logFilePathAccess = TestPermissions(Environment.CurrentDirectory);
         if (logFilePathAccess.IsSuccessful) return;
         AnsiConsole.MarkupLine($"[red]Unable to access the application folder:[/] {Environment.CurrentDirectory}");
         AnsiConsole.MarkupLine($"[red]{logFilePathAccess.Reason}[/]");
@@ -22,7 +22,7 @@ public static class Utilities
 
     public static void TestConfiguredFolderPaths(Configuration config)
     {
-        var sessionPathAccess = TestFolderPermissions(config.SessionPath);
+        var sessionPathAccess = TestPermissions(config.SessionPath);
         if (!sessionPathAccess.IsSuccessful)
         {
             AnsiConsole.MarkupLine($"[red]Unable to access configured session path:[/] {config.SessionPath}");
@@ -32,7 +32,7 @@ public static class Utilities
             Environment.Exit(1);
         }
 
-        var downloadPathAccess = TestFolderPermissions(config.DownloadPath);
+        var downloadPathAccess = TestPermissions(config.DownloadPath);
         if (downloadPathAccess.IsSuccessful) return;
         AnsiConsole.MarkupLine($"[red]Unable to access configured download path:[/] {config.DownloadPath}");
         AnsiConsole.MarkupLine($"[red]{downloadPathAccess.Reason}[/]");
@@ -40,7 +40,7 @@ public static class Utilities
         Environment.Exit(1);
     }
 
-    public static PathTestResult TestFolderPermissions(string? path, bool testParent = false)
+    public static PathTestResult TestPermissions(string? path, bool testParent = false)
     {
         if (string.IsNullOrWhiteSpace(path))
             return new()
@@ -50,12 +50,19 @@ public static class Utilities
             };
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            var di = new DirectoryInfo(path);
+            var info = new FileInfo(path);
+            var parentExists = info.Directory is not null && info.Directory.Exists;
+            if (!parentExists)
+                return new()
+                {
+                    IsSuccessful = false,
+                    Reason = $"Cannot find {info.Name}'s parent directory {info.DirectoryName}"
+                };
             var isInRoleWithAccess = false;
             var currentUser = WindowsIdentity.GetCurrent();
             try
             {
-                var acl = di.GetAccessControl();
+                var acl = info.GetAccessControl();
                 var rules = acl.GetAccessRules(true, true, typeof(NTAccount));
                 var principal = new WindowsPrincipal(currentUser);
                 foreach (AuthorizationRule rule in rules)
@@ -73,7 +80,7 @@ public static class Utilities
                         return new()
                         {
                             IsSuccessful = false,
-                            Reason = $"Permission Denied for {di.FullName}"
+                            Reason = $"Permission Denied for {info.FullName}"
                         };
                     isInRoleWithAccess = true;
                 }
@@ -87,17 +94,51 @@ public static class Utilities
                     IsSuccessful = false
                 };
             }
-            if (isInRoleWithAccess)
-                return new()
+            catch (FileNotFoundException e)
+            {
+                var canAccessParent = TestPermissions(info.Directory!.FullName);
+                return canAccessParent.IsSuccessful
+                    ? (new()
+                    {
+                        Exception = e,
+                        Reason = $"{info.FullName} Not Found",
+                        IsSuccessful = true
+                    })
+                    : (new()
                 {
                     IsSuccessful = false,
-                    Reason = $"Unknown error getting file permissions for path {di.FullName}"
-                };
-            return new()
+                    Exception = canAccessParent.Exception,
+                    Reason = $"Cannot Access parent directory of {info.FullName}"
+                });
+            }
+            catch (DirectoryNotFoundException e)
+            {
+                var canAccessParent = TestPermissions(info.Directory!.FullName);
+                return canAccessParent.IsSuccessful
+                    ? (new()
+                    {
+                        Exception = e,
+                        Reason = $"{info.FullName} Not Found",
+                        IsSuccessful = true
+                    })
+                    : (new()
+                    {
+                        IsSuccessful = false,
+                        Exception = canAccessParent.Exception,
+                        Reason = $"Cannot Access parent directory of {info.FullName}"
+                    });
+            }
+            return isInRoleWithAccess
+                ? (new()
+                {
+                    IsSuccessful = true,
+                    Reason = $"{currentUser.Name} has write access to path {info.FullName}"
+                })
+                : (new()
             {
                 IsSuccessful = false,
                 Reason = $"{currentUser.Name} does not have permission to {path}"
-            };
+            });
         }
         else
         {
@@ -116,7 +157,7 @@ public static class Utilities
                         IsSuccessful = false,
                         Reason = $"{path} is not a directory"
                     };
-                return CreatePathTestResult(path, info);
+                return CreateUnixTestPathResult(path, info);
             }
             catch (Exception e)
             {
@@ -130,31 +171,95 @@ public static class Utilities
         }
     }
 
-    public static PathTestResult TestFilePermissions(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return new()
-            {
-                IsSuccessful = false,
-                Reason = "Path was blank.  Unable to test permissions"
-            };
-        var info = new UnixFileInfo(path);
-        if (!info.Exists)
-            return new()
-            {
-                IsSuccessful = false,
-                Reason = $"{path} Does not exist"
-            };
-        return !info.IsRegularFile
-            ? (new()
-            {
-                IsSuccessful = false,
-                Reason = $"{path} is not a file"
-            })
-            : CreatePathTestResult(path, info);
-    }
+    //public static PathTestResult TestFilePermissions(string? path)
+    //{
+    //    if (string.IsNullOrWhiteSpace(path))
+    //        return new()
+    //        {
+    //            IsSuccessful = false,
+    //            Reason = "Path was blank.  Unable to test permissions"
+    //        };
+    //    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    //    {
+    //        var fi = new FileInfo(path);
+    //        var isInRoleWithAccess = false;
+    //        var currentUser = WindowsIdentity.GetCurrent();
+    //        try
+    //        {
+    //            var acl = fi.GetAccessControl();
+    //            var rules = acl.GetAccessRules(true, true, typeof(NTAccount));
+    //            var principal = new WindowsPrincipal(currentUser);
+    //            foreach (AuthorizationRule rule in rules)
+    //            {
+    //                if (rule is not FileSystemAccessRule fsAccessRule)
+    //                    continue;
 
-    private static PathTestResult CreatePathTestResult(string path, UnixFileSystemInfo info)
+    //                if ((fsAccessRule.FileSystemRights & FileSystemRights.Write) <= 0) continue;
+    //                var ntAccount = rule.IdentityReference as NTAccount;
+    //                if (ntAccount == null)
+    //                    continue;
+
+    //                if (!principal.IsInRole(ntAccount.Value)) continue;
+    //                if (fsAccessRule.AccessControlType == AccessControlType.Deny)
+    //                    return new()
+    //                    {
+    //                        IsSuccessful = false,
+    //                        Reason = $"Permission Denied for {fi.FullName}"
+    //                    };
+    //                isInRoleWithAccess = true;
+    //            }
+    //        }
+    //        catch (UnauthorizedAccessException e)
+    //        {
+    //            return new()
+    //            {
+    //                Exception = e,
+    //                Reason = e.Message,
+    //                IsSuccessful = false
+    //            };
+    //        }
+    //        catch (FileNotFoundException e)
+    //        {
+    //            return new()
+    //            {
+    //                Exception = e,
+    //                Reason = $"{fi.FullName} Not Found",
+    //                IsSuccessful = false
+    //            };
+    //        }
+    //        return isInRoleWithAccess
+    //            ? (new()
+    //            {
+    //                IsSuccessful = true,
+    //                Reason = $"{currentUser.Name} has write access to path {fi.FullName}"
+    //            })
+    //            : (new()
+    //        {
+    //            IsSuccessful = false,
+    //            Reason = $"{currentUser.Name} does not have permission to {path}"
+    //        });
+    //    }
+    //    else
+    //    {
+
+    //        var info = new UnixFileInfo(path);
+    //    if (!info.Exists)
+    //        return new()
+    //        {
+    //            IsSuccessful = false,
+    //            Reason = $"{path} Does not exist"
+    //        };
+    //    return !info.IsRegularFile
+    //        ? (new()
+    //        {
+    //            IsSuccessful = false,
+    //            Reason = $"{path} is not a file"
+    //        })
+    //        : CreateUnixTestPathResult(path, info);
+    //    }
+    //}
+
+    private static PathTestResult CreateUnixTestPathResult(string path, UnixFileSystemInfo info)
     {
         var canAccess = info.CanAccess(AccessModes.W_OK);
         if (canAccess)

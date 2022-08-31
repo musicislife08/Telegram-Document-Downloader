@@ -15,7 +15,7 @@ using ConfigurationManager = TelegramGroupFileDownloader.Config.ConfigurationMan
 const string apiId = "2252206";
 const string apiHash = "4dcf9af0c05042ca938a0a44bfb522dd";
 
-var date = DateTimeOffset.Now.ToString("O");
+var date = DateTimeOffset.Now.ToString("u").Replace(':','_');
 var errorLogFilePath = Path.Combine(Environment.CurrentDirectory, $"error-{date}.log");
 var duplicateLogFilePath = Path.Combine(Environment.CurrentDirectory, $"duplicate-{date}.csv");
 var filteredLogFilePath = Path.Combine(Environment.CurrentDirectory, $"filtered-{date}.log");
@@ -91,9 +91,9 @@ try
     if (string.IsNullOrWhiteSpace(config.PhoneNumber))
         throw new ConfigValueException(nameof(config.PhoneNumber));
 
-    EnsureDownloadPathExists(config.DownloadPath);
+    EnsurePathExists(config.DownloadPath);
     if (!string.IsNullOrWhiteSpace(config.SessionPath))
-        EnsureDownloadPathExists(config.SessionPath);
+        EnsurePathExists(config.SessionPath);
     using var client = new WTelegram.Client(Config);
     client.CollectAccessHash = true;
     client.PingInterval = 60;
@@ -530,12 +530,17 @@ static void WriteLogToFile(string path, string message)
     writer.WriteLine(message);
 }
 
-static void EnsureDownloadPathExists(string path)
+static void EnsurePathExists(string path)
 {
     
-    var permissions = Utilities.TestFolderPermissions(path, true);
-    if (permissions.IsSuccessful)
-        Directory.CreateDirectory(path);
+    var permissions = Utilities.TestPermissions(path, true);
+    if (!permissions.IsSuccessful)
+    {
+        AnsiConsole.MarkupLine($"[red]Error Accessing download Path: {path}[/]");
+        AnsiConsole.MarkupLine($"[red]Exception: {permissions.Reason}[/]");
+        Environment.Exit(3);
+    }        
+    Directory.CreateDirectory(path);
 }
 
 static void CleanupLogs()
