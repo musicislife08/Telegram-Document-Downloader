@@ -55,7 +55,6 @@ public static class Utilities
             {
                 var rules = info.GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier));
                 var identity = WindowsIdentity.GetCurrent();
-
                 foreach (FileSystemAccessRule rule in rules)
                 {
                     if (identity.Groups is null)
@@ -83,6 +82,11 @@ public static class Utilities
                     Reason = e.Message
                 };
             }
+            return new()
+            {
+                IsSuccessful = false,
+                Reason = $"Unknown error getting file permissions for path {info.FullName}"
+            };
         }
         else
         {
