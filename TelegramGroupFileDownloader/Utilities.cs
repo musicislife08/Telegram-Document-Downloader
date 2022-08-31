@@ -50,6 +50,8 @@ public static class Utilities
         {
             var info = new DirectoryInfo(path);
             var permissions = info.GetAccessControl();
+            var x = "";
+            return new();
         }
         else
         {
@@ -97,13 +99,13 @@ public static class Utilities
                 IsSuccessful = false,
                 Reason = $"{path} Does not exist"
             };
-        if (!info.IsRegularFile)
-            return new()
+        return !info.IsRegularFile
+            ? (new()
             {
                 IsSuccessful = false,
                 Reason = $"{path} is not a file"
-            };
-        return CreatePathTestResult(path, info);
+            })
+            : CreatePathTestResult(path, info);
     }
 
     private static PathTestResult CreatePathTestResult(string path, UnixFileSystemInfo info)
