@@ -25,6 +25,7 @@ public static class ConfigurationManager
     {
         var converter = new SerializerBuilder().Build();
         var yaml = converter.Serialize(config);
+        var hasAccess = Utilities.TestFilePermissions("config.yaml");
         File.WriteAllText("config.yaml", yaml);
     }
 }
