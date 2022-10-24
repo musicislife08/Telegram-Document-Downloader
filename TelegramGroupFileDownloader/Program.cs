@@ -6,10 +6,10 @@ using System.Security.Cryptography;
 using ByteSizeLib;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Mono.Unix;
 using TelegramGroupFileDownloader.Config;
 using TelegramGroupFileDownloader.Documents;
 using ConfigurationManager = TelegramGroupFileDownloader.Config.ConfigurationManager;
+
 // ReSharper disable SwitchStatementMissingSomeEnumCasesNoDefault
 
 const string apiId = "2252206";
@@ -22,7 +22,7 @@ var filteredLogFilePath = Path.Combine(Environment.CurrentDirectory, $"filtered-
 Utilities.TestApplicationFolderPath();
 if (!File.Exists(duplicateLogFilePath))
     File.WriteAllText(duplicateLogFilePath,"Duplicate File,Original File" + Environment.NewLine);
-CleanupLogs();
+Utilities.CleanupLogs();
 var config = new Configuration();
 try
 {
@@ -38,7 +38,6 @@ try
             await using (var db = new DocumentContext())
             {
                 await db.Database.MigrateAsync();
-                
             }
 
             config = ConfigurationManager.GetConfiguration();
@@ -91,9 +90,9 @@ try
     if (string.IsNullOrWhiteSpace(config.PhoneNumber))
         throw new ConfigValueException(nameof(config.PhoneNumber));
 
-    EnsurePathExists(config.DownloadPath);
+    Utilities.EnsurePathExists(config.DownloadPath);
     if (!string.IsNullOrWhiteSpace(config.SessionPath))
-        EnsurePathExists(config.SessionPath);
+        Utilities.EnsurePathExists(config.SessionPath);
     using var client = new WTelegram.Client(Config);
     client.CollectAccessHash = true;
     client.PingInterval = 60;
@@ -138,7 +137,7 @@ try
                     {
                         erroredFiles++;
                         var message = (Message)msg;
-                        WriteLogToFile(errorLogFilePath, message.message);
+                        Utilities.WriteLogToFile(errorLogFilePath, message.message);
                         var logMsg = Markup.FromInterpolated($"Error: [orange1]{message.message}[/]");
                         logs = AddLog(logs, logMsg);
                         table = BuildTable(
@@ -160,7 +159,7 @@ try
                     if (wanted.Length > 0 && !wanted.Contains(info.Extension.Replace(".", "").ToLower()))
                     {
                         filteredFiles++;
-                        WriteLogToFile(filteredLogFilePath, info.FullName);
+                        Utilities.WriteLogToFile(filteredLogFilePath, info.FullName);
                         logs = AddLog(logs, Markup.FromInterpolated($"Skipping Filtered: [red]{sanitizedName}[/]"));
                         table = BuildTable(
                             table,
@@ -230,7 +229,7 @@ try
                             duplicateFiles++;
                             await using var dupeDb = new DocumentContext();
                             var existing = await dupeDb.DuplicateFiles.FirstAsync(x => x.TelegramId == document.ID);
-                            WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{existing.OrignalName}");
+                            Utilities.WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{existing.OrignalName}");
                             logs = AddLog(logs,
                                 Markup.FromInterpolated($"Existing Duplicate: [red]{sanitizedName}[/] is duplicate of [green]{existing.OrignalName}[/]"));
                             table = BuildTable(
@@ -246,6 +245,7 @@ try
                             continue;
                         }
                     }
+
                     switch (choice)
                     {
                         case PreDownloadProcessingDecision.ReDownload:
@@ -287,7 +287,7 @@ try
                         erroredFiles++;
                         var errorMessage = Markup.FromInterpolated(
                             $"Download Error: {e.Message} - [red]{sanitizedName}[/]");
-                        WriteLogToFile(errorLogFilePath, $"{sanitizedName} - {e.Message}");
+                        Utilities.WriteLogToFile(errorLogFilePath, $"{sanitizedName} - {e.Message}");
                         logs = AddLog(logs, errorMessage);
                         table = BuildTable(
                             table,
@@ -301,6 +301,7 @@ try
                         ctx.Refresh();
                         continue;
                     }
+
                     var hash = GetFileHash(info.FullName);
                     var postChoice = await DocumentManager.DecidePostDownload(info, hash);
                     await using var context = new DocumentContext();
@@ -318,9 +319,10 @@ try
                             });
                             await context.SaveChangesAsync();
                         }
+
                         info.Delete();
                         duplicateFiles++;
-                        WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{dbFile.Name}");
+                        Utilities.WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{dbFile.Name}");
                         logs = AddLog(logs,
                             Markup.FromInterpolated(
                                 $"Cleaned Up:[red] {sanitizedName}[/] is duplicate of [green] {dbFile.Name}[/]"));
@@ -487,6 +489,7 @@ static string RemoveNewlinesFromPath(string value)
                 break;
         }
     }
+
     return new string(validCharacters, 0, next).Trim();
 }
 
@@ -513,6 +516,7 @@ static Table BuildTable(Table table,
     {
         table.AddRow(log);
     }
+
     return table;
 }
 
@@ -523,39 +527,3 @@ static List<Markup> AddLog(List<Markup> list, Markup markup, bool removeOld = tr
     list.Add(markup);
     return list;
 }
-
-static void WriteLogToFile(string path, string message)
-{
-    using var writer = new StreamWriter(path, true);
-    writer.WriteLine(message);
-}
-
-static void EnsurePathExists(string path)
-{
-    
-    var permissions = Utilities.TestPermissions(path, true);
-    if (!permissions.IsSuccessful)
-    {
-        AnsiConsole.MarkupLine($"[red]Error Accessing download Path: {path}[/]");
-        AnsiConsole.MarkupLine($"[red]Exception: {permissions.Reason}[/]");
-        Environment.Exit(3);
-    }        
-    Directory.CreateDirectory(path);
-}
-
-static void CleanupLogs()
-{
-    var files = Directory.GetFiles(Environment.CurrentDirectory, "*.log");
-    if (files.Length <= 3)
-        return;
-    foreach (var file in files)
-    {
-        var info = new FileInfo(file);
-        var now = DateTimeOffset.Now;
-        if (info.CreationTimeUtc > DateTimeOffset.UtcNow.AddDays(7))
-        {
-            info.Delete();
-        }
-    }
-}
-

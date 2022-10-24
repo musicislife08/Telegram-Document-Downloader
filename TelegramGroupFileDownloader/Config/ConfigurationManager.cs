@@ -6,30 +6,34 @@ namespace TelegramGroupFileDownloader.Config;
 
 public static class ConfigurationManager
 {
-    private const string configName = "config.yaml";
+    private const string _configName = "config.yaml";
+
     public static Configuration GetConfiguration()
     {
         var config = new Configuration();
-        if (!File.Exists(configName))
+        if (!File.Exists(_configName))
         {
             var configRoot = new ConfigurationBuilder().AddEnvironmentVariables().Build();
             configRoot.GetSection("Config").Bind(config);
             SaveConfiguration(config);
             return config;
         }
+
         var converter = new DeserializerBuilder().Build();
-        var permissions = Utilities.TestPermissions(configName);
+        var permissions = Utilities.TestPermissions(_configName);
         if (permissions.IsSuccessful)
         {
-            var rawYaml = File.ReadAllText(configName);
+            var rawYaml = File.ReadAllText(_configName);
             config = converter.Deserialize<Configuration>(rawYaml);
             return config;
         }
+
         if (permissions.Exception is not null and FileNotFoundException)
         {
             return config;
         }
-        AnsiConsole.MarkupLine($"[red]Error accessing {configName}[/]");
+
+        AnsiConsole.MarkupLine($"[red]Error accessing {_configName}[/]");
         Environment.Exit(2);
         return config;
     }
@@ -38,7 +42,7 @@ public static class ConfigurationManager
     {
         var converter = new SerializerBuilder().Build();
         var yaml = converter.Serialize(config);
-        var fi = new FileInfo(configName);
+        var fi = new FileInfo(_configName);
         var hasAccess = Utilities.TestPermissions(fi.FullName);
         if (!hasAccess.IsSuccessful)
         {
@@ -48,6 +52,7 @@ public static class ConfigurationManager
                 Environment.Exit(2);
             }
         }
-        File.WriteAllText(configName, yaml);
+
+        File.WriteAllText(_configName, yaml);
     }
 }

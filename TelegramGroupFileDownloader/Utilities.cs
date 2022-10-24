@@ -10,6 +10,41 @@ namespace TelegramGroupFileDownloader;
 
 public static class Utilities
 {
+    public static void CleanupLogs()
+    {
+        var files = Directory.GetFiles(Environment.CurrentDirectory, "*.log");
+        if (files.Length <= 3)
+            return;
+        foreach (var file in files)
+        {
+            var info = new FileInfo(file);
+            var now = DateTimeOffset.Now;
+            if (info.CreationTimeUtc > now.AddDays(7))
+            {
+                info.Delete();
+            }
+        }
+    }
+
+    public static void WriteLogToFile(string path, string message)
+    {
+        using var writer = new StreamWriter(path, true);
+        writer.WriteLine(message);
+    }
+
+    public static void EnsurePathExists(string path)
+    {
+        var permissions = Utilities.TestPermissions(path, true);
+        if (!permissions.IsSuccessful)
+        {
+            AnsiConsole.MarkupLine($"[red]Error Accessing download Path: {path}[/]");
+            AnsiConsole.MarkupLine($"[red]Exception: {permissions.Reason}[/]");
+            Environment.Exit(3);
+        }
+
+        Directory.CreateDirectory(path);
+    }
+
     public static void TestApplicationFolderPath()
     {
         var logFilePathAccess = TestPermissions(Environment.CurrentDirectory);
@@ -128,6 +163,7 @@ public static class Utilities
                         Reason = $"Cannot Access parent directory of {info.FullName}"
                     });
             }
+
             return isInRoleWithAccess
                 ? (new()
                 {
@@ -140,127 +176,42 @@ public static class Utilities
                 Reason = $"{currentUser.Name} does not have permission to {path}"
             });
         }
-        else
+
+        try
         {
-            try
+            var info = new UnixFileInfo(path);
+            return CreateUnixTestPathResult(path, info);
+        }
+        catch (Exception e)
+        {
+            return new()
             {
-                var info = new UnixDirectoryInfo(path);
-                if (!info.Exists)
-                    return new()
-                    {
-                        IsSuccessful = false,
-                        Reason = $"{path} Does not exist"
-                    };
-                if (!info.IsDirectory)
-                    return new()
-                    {
-                        IsSuccessful = false,
-                        Reason = $"{path} is not a directory"
-                    };
-                return CreateUnixTestPathResult(path, info);
-            }
-            catch (Exception e)
-            {
-                return new()
-                {
-                    Exception = e,
-                    Reason = e.Message,
-                    IsSuccessful = false
-                };
-            }
+                Exception = e,
+                Reason = e.Message,
+                IsSuccessful = false
+            };
         }
     }
 
-    //public static PathTestResult TestFilePermissions(string? path)
-    //{
-    //    if (string.IsNullOrWhiteSpace(path))
-    //        return new()
-    //        {
-    //            IsSuccessful = false,
-    //            Reason = "Path was blank.  Unable to test permissions"
-    //        };
-    //    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-    //    {
-    //        var fi = new FileInfo(path);
-    //        var isInRoleWithAccess = false;
-    //        var currentUser = WindowsIdentity.GetCurrent();
-    //        try
-    //        {
-    //            var acl = fi.GetAccessControl();
-    //            var rules = acl.GetAccessRules(true, true, typeof(NTAccount));
-    //            var principal = new WindowsPrincipal(currentUser);
-    //            foreach (AuthorizationRule rule in rules)
-    //            {
-    //                if (rule is not FileSystemAccessRule fsAccessRule)
-    //                    continue;
-
-    //                if ((fsAccessRule.FileSystemRights & FileSystemRights.Write) <= 0) continue;
-    //                var ntAccount = rule.IdentityReference as NTAccount;
-    //                if (ntAccount == null)
-    //                    continue;
-
-    //                if (!principal.IsInRole(ntAccount.Value)) continue;
-    //                if (fsAccessRule.AccessControlType == AccessControlType.Deny)
-    //                    return new()
-    //                    {
-    //                        IsSuccessful = false,
-    //                        Reason = $"Permission Denied for {fi.FullName}"
-    //                    };
-    //                isInRoleWithAccess = true;
-    //            }
-    //        }
-    //        catch (UnauthorizedAccessException e)
-    //        {
-    //            return new()
-    //            {
-    //                Exception = e,
-    //                Reason = e.Message,
-    //                IsSuccessful = false
-    //            };
-    //        }
-    //        catch (FileNotFoundException e)
-    //        {
-    //            return new()
-    //            {
-    //                Exception = e,
-    //                Reason = $"{fi.FullName} Not Found",
-    //                IsSuccessful = false
-    //            };
-    //        }
-    //        return isInRoleWithAccess
-    //            ? (new()
-    //            {
-    //                IsSuccessful = true,
-    //                Reason = $"{currentUser.Name} has write access to path {fi.FullName}"
-    //            })
-    //            : (new()
-    //        {
-    //            IsSuccessful = false,
-    //            Reason = $"{currentUser.Name} does not have permission to {path}"
-    //        });
-    //    }
-    //    else
-    //    {
-
-    //        var info = new UnixFileInfo(path);
-    //    if (!info.Exists)
-    //        return new()
-    //        {
-    //            IsSuccessful = false,
-    //            Reason = $"{path} Does not exist"
-    //        };
-    //    return !info.IsRegularFile
-    //        ? (new()
-    //        {
-    //            IsSuccessful = false,
-    //            Reason = $"{path} is not a file"
-    //        })
-    //        : CreateUnixTestPathResult(path, info);
-    //    }
-    //}
-
-    private static PathTestResult CreateUnixTestPathResult(string path, UnixFileSystemInfo info)
+    // ReSharper disable once SuggestBaseTypeForParameter
+    private static PathTestResult CreateUnixTestPathResult(string path, UnixFileInfo info)
     {
+        if (!info.Exists)
+        {
+            var canAccessParent = info.Directory.Exists && info.Directory.CanAccess(AccessModes.W_OK);
+            if (canAccessParent)
+                return new()
+                {
+                    IsSuccessful = true,
+                    Reason = "Can Access Parent"
+                };
+            return new()
+            {
+                IsSuccessful = false,
+                Reason = $"{path} Does not exist and user does not have access to parent folder"
+            };
+        }
+
         var canAccess = info.CanAccess(AccessModes.W_OK);
         if (canAccess)
             return new()
@@ -273,62 +224,5 @@ public static class Utilities
             IsSuccessful = canAccess,
             Reason = $"Does not have write permissions to: {path}"
         };
-        // return info.FileAccessPermissions switch
-        // {
-        //     FileAccessPermissions.UserReadWriteExecute => new()
-        //     {
-        //         IsSuccessful = true, Reason = $"Has Read Write Execute Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.UserRead => new() { IsSuccessful = false, Reason = $"Has Read Permissions: {path}" },
-        //     FileAccessPermissions.UserWrite => new()
-        //     {
-        //         IsSuccessful = true, Reason = $"Has Read Write Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.UserExecute => new()
-        //     {
-        //         IsSuccessful = false, Reason = $"Has Execute Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.GroupReadWriteExecute => new()
-        //     {
-        //         IsSuccessful = true, Reason = $"Has Group Read Write Execute Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.GroupRead => new()
-        //     {
-        //         IsSuccessful = false, Reason = $"Has Group Read Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.GroupWrite => new()
-        //     {
-        //         IsSuccessful = true, Reason = $"Has Group Write Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.GroupExecute => new()
-        //     {
-        //         IsSuccessful = false, Reason = $"Has Group Execute Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.OtherReadWriteExecute => new()
-        //     {
-        //         IsSuccessful = true, Reason = $"Has Other Read Write Execute Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.OtherRead => new()
-        //     {
-        //         IsSuccessful = false, Reason = $"Has Other Read Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.OtherWrite => new()
-        //     {
-        //         IsSuccessful = true, Reason = $"Has Other Write Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.OtherExecute => new()
-        //     {
-        //         IsSuccessful = false, Reason = $"Has Other Execute Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.DefaultPermissions => new()
-        //     {
-        //         IsSuccessful = false, Reason = $"Has Default Permissions: {path}"
-        //     },
-        //     FileAccessPermissions.AllPermissions => new()
-        //     {
-        //         IsSuccessful = true, Reason = $"Has All Permissions: {path}"
-        //     },
-        //     _ => new() { IsSuccessful = false, Reason = $"Unable To Determine Permissions: {path}" }
-        // };
     }
 }
