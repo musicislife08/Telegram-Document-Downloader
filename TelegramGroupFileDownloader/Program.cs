@@ -9,12 +9,21 @@ using Microsoft.Extensions.Logging;
 using TelegramGroupFileDownloader.Config;
 using TelegramGroupFileDownloader.Documents;
 using ConfigurationManager = TelegramGroupFileDownloader.Config.ConfigurationManager;
+
 // ReSharper disable SwitchStatementMissingSomeEnumCasesNoDefault
 
 const string apiId = "2252206";
 const string apiHash = "4dcf9af0c05042ca938a0a44bfb522dd";
-var config = new Configuration();
 
+var date = DateTimeOffset.Now.ToString("u").Replace(':','_');
+var errorLogFilePath = Path.Combine(Environment.CurrentDirectory, $"error-{date}.log");
+var duplicateLogFilePath = Path.Combine(Environment.CurrentDirectory, $"duplicate-{date}.csv");
+var filteredLogFilePath = Path.Combine(Environment.CurrentDirectory, $"filtered-{date}.log");
+Utilities.TestApplicationFolderPath();
+if (!File.Exists(duplicateLogFilePath))
+    File.WriteAllText(duplicateLogFilePath,"Duplicate File,Original File" + Environment.NewLine);
+Utilities.CleanupLogs();
+var config = new Configuration();
 try
 {
     var debug = args.Contains("-d");
@@ -29,7 +38,6 @@ try
             await using (var db = new DocumentContext())
             {
                 await db.Database.MigrateAsync();
-                //await db.Database.EnsureCreatedAsync();
             }
 
             config = ConfigurationManager.GetConfiguration();
@@ -82,9 +90,9 @@ try
     if (string.IsNullOrWhiteSpace(config.PhoneNumber))
         throw new ConfigValueException(nameof(config.PhoneNumber));
 
-    EnsureDownloadPathExists(config.DownloadPath);
+    Utilities.EnsurePathExists(config.DownloadPath);
     if (!string.IsNullOrWhiteSpace(config.SessionPath))
-        EnsureDownloadPathExists(config.SessionPath);
+        Utilities.EnsurePathExists(config.SessionPath);
     using var client = new WTelegram.Client(Config);
     client.CollectAccessHash = true;
     client.PingInterval = 60;
@@ -107,7 +115,6 @@ try
     long downloadedBytes = 0;
     long totalBytes = 0;
     var logs = new List<Markup>();
-    var errorLogs = new List<Markup>();
     var table = new Table()
         .Centered()
         .HideHeaders();
@@ -130,9 +137,9 @@ try
                     {
                         erroredFiles++;
                         var message = (Message)msg;
+                        Utilities.WriteLogToFile(errorLogFilePath, message.message);
                         var logMsg = Markup.FromInterpolated($"Error: [orange1]{message.message}[/]");
                         logs = AddLog(logs, logMsg);
-                        errorLogs = AddLog(errorLogs, logMsg, false);
                         table = BuildTable(
                             table,
                             logs,
@@ -146,12 +153,13 @@ try
                         continue;
                     }
 
-                    var sanitizedName = SanitizeString(document.Filename);
+                    var sanitizedName = RemoveNewlinesFromPath(document.Filename);
                     var info = new FileInfo(config.DownloadPath + $"/{sanitizedName}");
                     var wanted = config.DocumentExtensionFilter!.Split(",");
                     if (wanted.Length > 0 && !wanted.Contains(info.Extension.Replace(".", "").ToLower()))
                     {
                         filteredFiles++;
+                        Utilities.WriteLogToFile(filteredLogFilePath, info.FullName);
                         logs = AddLog(logs, Markup.FromInterpolated($"Skipping Filtered: [red]{sanitizedName}[/]"));
                         table = BuildTable(
                             table,
@@ -221,7 +229,8 @@ try
                             duplicateFiles++;
                             await using var dupeDb = new DocumentContext();
                             var existing = await dupeDb.DuplicateFiles.FirstAsync(x => x.TelegramId == document.ID);
-                                logs = AddLog(logs,
+                            Utilities.WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{existing.OrignalName}");
+                            logs = AddLog(logs,
                                 Markup.FromInterpolated($"Existing Duplicate: [red]{sanitizedName}[/] is duplicate of [green]{existing.OrignalName}[/]"));
                             table = BuildTable(
                                 table,
@@ -236,6 +245,7 @@ try
                             continue;
                         }
                     }
+
                     switch (choice)
                     {
                         case PreDownloadProcessingDecision.ReDownload:
@@ -277,8 +287,8 @@ try
                         erroredFiles++;
                         var errorMessage = Markup.FromInterpolated(
                             $"Download Error: {e.Message} - [red]{sanitizedName}[/]");
+                        Utilities.WriteLogToFile(errorLogFilePath, $"{sanitizedName} - {e.Message}");
                         logs = AddLog(logs, errorMessage);
-                        errorLogs = AddLog(errorLogs, errorMessage, false);
                         table = BuildTable(
                             table,
                             logs,
@@ -291,6 +301,7 @@ try
                         ctx.Refresh();
                         continue;
                     }
+
                     var hash = GetFileHash(info.FullName);
                     var postChoice = await DocumentManager.DecidePostDownload(info, hash);
                     await using var context = new DocumentContext();
@@ -308,8 +319,10 @@ try
                             });
                             await context.SaveChangesAsync();
                         }
+
                         info.Delete();
                         duplicateFiles++;
+                        Utilities.WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{dbFile.Name}");
                         logs = AddLog(logs,
                             Markup.FromInterpolated(
                                 $"Cleaned Up:[red] {sanitizedName}[/] is duplicate of [green] {dbFile.Name}[/]"));
@@ -339,7 +352,7 @@ try
                     downloadedBytes += info.Length;
                     totalBytes += info.Length;
                     downloadedFiles++;
-                    logs = AddLog(logs, Markup.FromInterpolated($"Downloaded:[green bold] {SanitizeString(sanitizedName)}[/]"));
+                    logs = AddLog(logs, Markup.FromInterpolated($"Downloaded:[green bold] {RemoveNewlinesFromPath(sanitizedName)}[/]"));
                     table = BuildTable(
                         table,
                         logs,
@@ -370,7 +383,6 @@ try
     var finalTable = new Table().Centered().Expand();
     var runTable = new Table().Centered();
     var groupTable = new Table().Centered();
-    var errorTable = new Table().Centered();
 
     runTable
         .AddColumn("Existing")
@@ -385,9 +397,6 @@ try
         .AddColumn("Duplicated Files")
         .AddColumn("Total Unique Files")
         .AddColumn("Total Archive Size");
-
-    errorTable
-        .AddColumn("").HideHeaders();
 
     finalTable.AddColumn("Run Stats").AddColumn("Group Stats");
 
@@ -406,13 +415,7 @@ try
         new Markup($"[green]{archiveSize}[/]")
     );
 
-    foreach (var log in errorLogs)
-    {
-        errorTable.AddRow(log);
-    }
-    
     finalTable.AddRow(runTable, groupTable);
-    finalTable.AddRow(errorTable);
 
     AnsiConsole.Write(finalTable);
 
@@ -428,9 +431,9 @@ try
             "verification_code" => AnsiConsole.Prompt(new TextPrompt<string>("[bold red]Enter Verification Code:[/]")
                 .PromptStyle("red")
                 .Secret()),
-            "first_name" => "John" // if sign-up is required
+            "first_name" => throw new ApplicationException("Please sign up for an account before you run this program")
             ,
-            "last_name" => "Doe" // if sign-up is required
+            "last_name" => throw new ApplicationException("Please sign up for an account before you run this program")
             ,
             "password" => AnsiConsole.Prompt(new TextPrompt<string>("[bold red]Enter 2fa password:[/] ")
                 .PromptStyle("red")
@@ -465,7 +468,7 @@ static string ConvertBytesToString(long bytes)
     return ByteSize.FromBytes(bytes).ToBinaryString();
 }
 
-static string SanitizeString(string value)
+static string RemoveNewlinesFromPath(string value)
 {
     var validCharacters = new char[value.Length];
     var next = 0;
@@ -477,11 +480,16 @@ static string SanitizeString(string value)
                 break;
             case '\n':
                 break;
+            case ',':
+                break;
+            case ':':
+                break;
             default:
                 validCharacters[next++] = c;
                 break;
         }
     }
+
     return new string(validCharacters, 0, next).Trim();
 }
 
@@ -508,6 +516,7 @@ static Table BuildTable(Table table,
     {
         table.AddRow(log);
     }
+
     return table;
 }
 
@@ -517,9 +526,4 @@ static List<Markup> AddLog(List<Markup> list, Markup markup, bool removeOld = tr
         list.Remove(list[0]);
     list.Add(markup);
     return list;
-}
-
-static void EnsureDownloadPathExists(string path)
-{
-    Directory.CreateDirectory(path);
 }

@@ -1,10 +1,9 @@
-using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using TelegramGroupFileDownloader.Database;
 
 namespace TelegramGroupFileDownloader.Documents;
 
-static class DocumentManager
+public static class DocumentManager
 {
        public static async Task<PreDownloadProcessingDecision> DecidePreDownload(FileInfo file, long telegramId, long size,
               CancellationToken stoppingToken = new())
@@ -15,7 +14,7 @@ static class DocumentManager
               {
                      var dbFile = await db.DocumentFiles.FirstOrDefaultAsync(
                             // ReSharper disable once SpecifyStringComparison
-                            x => x.Name.ToLower() == file.Name.ToLower(), stoppingToken);
+                            x => x.Name != null && x.Name.ToLower() == file.Name.ToLower(), stoppingToken);
                      if (dbFile is not null)
                      {
                             dbExists = true;
@@ -24,6 +23,7 @@ static class DocumentManager
                             await db.SaveChangesAsync(stoppingToken);
                      }
               }
+
               if (dbExists)
                      return PreDownloadProcessingDecision.Nothing;
               var fileExists = file.Exists;
@@ -53,25 +53,19 @@ static class DocumentManager
                             await db.SaveChangesAsync(stoppingToken);
                      }
               }
+
               if (dupeExists)
                      return PreDownloadProcessingDecision.ExistingDuplicate;
               return !fileExists && !dbExists
                      ? PreDownloadProcessingDecision.SaveAndDownload
                      : PreDownloadProcessingDecision.Error;
        }
+
        public static async Task<PostDownloadProcessingDecision> DecidePostDownload(FileInfo file, string hash,
               CancellationToken stoppingToken = new())
        {
               await using var db = new DocumentContext();
               var isDuplicateByHash = await db.DocumentFiles.AnyAsync(x => x.Hash == hash, stoppingToken);
               return isDuplicateByHash ? PostDownloadProcessingDecision.ProcessDuplicate : PostDownloadProcessingDecision.Nothing;
-       }
-
-       private static string GetFileHash(string filename)
-       {
-              using var sha256 = SHA256.Create();
-              using var stream = File.OpenRead(filename);
-              var hash = sha256.ComputeHash(stream);
-              return BitConverter.ToString(hash).Replace("-", "");
        }
 }

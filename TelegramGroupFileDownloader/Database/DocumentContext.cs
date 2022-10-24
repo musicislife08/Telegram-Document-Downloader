@@ -4,8 +4,8 @@ namespace TelegramGroupFileDownloader.Database;
 
 public class DocumentContext : DbContext
 {
-    public DbSet<DocumentFile> DocumentFiles { get; set; }
-    public DbSet<DuplicateFile> DuplicateFiles { get; set; }
+    public DbSet<DocumentFile> DocumentFiles { get; set; } = null!;
+    public DbSet<DuplicateFile> DuplicateFiles { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
