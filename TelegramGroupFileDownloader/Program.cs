@@ -1,27 +1,26 @@
-﻿using Spectre.Console;
-using TelegramGroupFileDownloader;
-using TelegramGroupFileDownloader.Database;
-using TL;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using ByteSizeLib;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Spectre.Console;
+using TelegramGroupFileDownloader;
 using TelegramGroupFileDownloader.Config;
+using TelegramGroupFileDownloader.Database;
 using TelegramGroupFileDownloader.Documents;
-using ConfigurationManager = TelegramGroupFileDownloader.Config.ConfigurationManager;
+using TL;
 
 // ReSharper disable SwitchStatementMissingSomeEnumCasesNoDefault
 
 const string apiId = "2252206";
 const string apiHash = "4dcf9af0c05042ca938a0a44bfb522dd";
 
-var date = DateTimeOffset.Now.ToString("u").Replace(':','_');
+var date = DateTimeOffset.Now.ToString("u").Replace(':', '_');
 var errorLogFilePath = Path.Combine(Environment.CurrentDirectory, $"error-{date}.log");
 var duplicateLogFilePath = Path.Combine(Environment.CurrentDirectory, $"duplicate-{date}.csv");
 var filteredLogFilePath = Path.Combine(Environment.CurrentDirectory, $"filtered-{date}.log");
 Utilities.TestApplicationFolderPath();
 if (!File.Exists(duplicateLogFilePath))
-    File.WriteAllText(duplicateLogFilePath,"Duplicate File,Original File" + Environment.NewLine);
+    File.WriteAllText(duplicateLogFilePath, "Duplicate File,Original File,Link" + Environment.NewLine);
 Utilities.CleanupLogs();
 var config = new Configuration();
 try
@@ -99,13 +98,22 @@ try
     client.MaxAutoReconnects = 30;
     //client.FilePartSize = 10240;
     await client.LoginUserIfNeeded();
-
     var groups = await client.Messages_GetAllChats();
     var group = (Channel)groups.chats.First(x => x.Value.Title == config.GroupName && x.Value.IsActive).Value;
-    //AnsiConsole.MarkupLine($"Getting documents from group [yellow]{config.GroupName}[/]");
     var hc = client.GetAccessHashFor<Channel>(group.ID);
     var msgs = await client.Messages_Search(new InputPeerChannel(group.ID, hc), string.Empty,
         new InputMessagesFilterDocument());
+    var delete = args.Contains("--delete");
+    try
+    {
+        _ = await client.Channels_GetAdminLog(new InputChannel(group.ID, hc), string.Empty);
+    }
+    catch (RpcException)
+    {
+        AnsiConsole.MarkupLine($"Getting documents from group [yellow]{config.GroupName}[/]");
+        delete = false;
+    }
+
     var totalGroupFiles = msgs.Count;
     var downloadedFiles = 0;
     var duplicateFiles = 0;
@@ -123,13 +131,14 @@ try
     var textData = Markup.FromInterpolated($"Found [green]{totalGroupFiles}[/] Documents");
     logs = AddLog(logs, textData);
     table = BuildTable(table, logs, totalGroupFiles, 0, 0, 0, 0, 0);
+    var channel = new InputPeerChannel(group.ID, hc);
     await AnsiConsole.Live(table)
         .StartAsync(async ctx =>
         {
             ctx.Refresh();
             for (var i = 0; i <= totalGroupFiles; i += 100)
             {
-                msgs = await client.Messages_Search(new InputPeerChannel(group.ID, hc), string.Empty,
+                msgs = await client.Messages_Search(channel, string.Empty,
                     new InputMessagesFilterDocument(), offset_id: 0, limit: 100, add_offset: i);
                 foreach (var msg in msgs.Messages)
                 {
@@ -137,8 +146,25 @@ try
                     {
                         erroredFiles++;
                         var message = (Message)msg;
-                        Utilities.WriteLogToFile(errorLogFilePath, message.message);
-                        var logMsg = Markup.FromInterpolated($"Error: [orange1]{message.message}[/]");
+                        var link = await client.Channels_ExportMessageLink(channel, message.ID);
+                        var logMsg =
+                            Markup.FromInterpolated(
+                                $"[yellow] Error: {link.link} [/]|[orange1] Message: {message.message}[/]");
+                        if (delete)
+                        {
+                            await client.DeleteMessages(channel, message.ID);
+                            Utilities.WriteLogToFile(errorLogFilePath,
+                                $"Error: Message: {message.message} | Deleting Message");
+                            logMsg =
+                                Markup.FromInterpolated(
+                                    $"[red] Error: Delete Enabled Removing[/] | [orange1]Message: {message.message}[/]");
+                        }
+                        else
+                        {
+                            Utilities.WriteLogToFile(errorLogFilePath,
+                                $"Error: {link.link} | Message: {message.message}");
+                        }
+
                         logs = AddLog(logs, logMsg);
                         table = BuildTable(
                             table,
@@ -159,8 +185,10 @@ try
                     if (wanted.Length > 0 && !wanted.Contains(info.Extension.Replace(".", "").ToLower()))
                     {
                         filteredFiles++;
-                        Utilities.WriteLogToFile(filteredLogFilePath, info.FullName);
-                        logs = AddLog(logs, Markup.FromInterpolated($"Skipping Filtered: [red]{sanitizedName}[/]"));
+                        var link = await client.Channels_ExportMessageLink(channel, msg.ID);
+                        Utilities.WriteLogToFile(filteredLogFilePath, $"{info.Name} | {link.link}");
+                        logs = AddLog(logs,
+                            Markup.FromInterpolated($"Skipping Filtered: {link.link} | [red]{sanitizedName}[/]"));
                         table = BuildTable(
                             table,
                             logs,
@@ -229,9 +257,12 @@ try
                             duplicateFiles++;
                             await using var dupeDb = new DocumentContext();
                             var existing = await dupeDb.DuplicateFiles.FirstAsync(x => x.TelegramId == document.ID);
-                            Utilities.WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{existing.OrignalName}");
+                            var link = await client.Channels_ExportMessageLink(channel, msg.ID);
+                            Utilities.WriteLogToFile(duplicateLogFilePath,
+                                $"{sanitizedName},{existing.OrignalName},{link.link}");
                             logs = AddLog(logs,
-                                Markup.FromInterpolated($"Existing Duplicate: [red]{sanitizedName}[/] is duplicate of [green]{existing.OrignalName}[/]"));
+                                Markup.FromInterpolated(
+                                    $"Existing Duplicate: {link.link} | [red]{sanitizedName}[/] is duplicate of [green]{existing.OrignalName}[/]"));
                             table = BuildTable(
                                 table,
                                 logs,
@@ -249,7 +280,9 @@ try
                     switch (choice)
                     {
                         case PreDownloadProcessingDecision.ReDownload:
-                            logs = AddLog(logs, Markup.FromInterpolated($"Re-downloading Partially Downloaded: [yellow] {sanitizedName}[/]"));
+                            logs = AddLog(logs,
+                                Markup.FromInterpolated(
+                                    $"Re-downloading Partially Downloaded: [yellow] {sanitizedName}[/]"));
                             table = BuildTable(
                                 table,
                                 logs,
@@ -287,7 +320,8 @@ try
                         erroredFiles++;
                         var errorMessage = Markup.FromInterpolated(
                             $"Download Error: {e.Message} - [red]{sanitizedName}[/]");
-                        Utilities.WriteLogToFile(errorLogFilePath, $"{sanitizedName} - {e.Message}");
+                        var link = await client.Channels_ExportMessageLink(channel, msg.ID);
+                        Utilities.WriteLogToFile(errorLogFilePath, $"{link.link} | {sanitizedName} - {e.Message}");
                         logs = AddLog(logs, errorMessage);
                         table = BuildTable(
                             table,
@@ -322,7 +356,8 @@ try
 
                         info.Delete();
                         duplicateFiles++;
-                        Utilities.WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{dbFile.Name}");
+                        var link = await client.Channels_ExportMessageLink(channel, msg.ID);
+                        Utilities.WriteLogToFile(duplicateLogFilePath, $"{sanitizedName},{dbFile.Name}, {link.link}");
                         logs = AddLog(logs,
                             Markup.FromInterpolated(
                                 $"Cleaned Up:[red] {sanitizedName}[/] is duplicate of [green] {dbFile.Name}[/]"));
@@ -352,7 +387,8 @@ try
                     downloadedBytes += info.Length;
                     totalBytes += info.Length;
                     downloadedFiles++;
-                    logs = AddLog(logs, Markup.FromInterpolated($"Downloaded:[green bold] {RemoveNewlinesFromPath(sanitizedName)}[/]"));
+                    logs = AddLog(logs,
+                        Markup.FromInterpolated($"Downloaded:[green bold] {RemoveNewlinesFromPath(sanitizedName)}[/]"));
                     table = BuildTable(
                         table,
                         logs,
@@ -431,10 +467,8 @@ try
             "verification_code" => AnsiConsole.Prompt(new TextPrompt<string>("[bold red]Enter Verification Code:[/]")
                 .PromptStyle("red")
                 .Secret()),
-            "first_name" => throw new ApplicationException("Please sign up for an account before you run this program")
-            ,
-            "last_name" => throw new ApplicationException("Please sign up for an account before you run this program")
-            ,
+            "first_name" => throw new ApplicationException("Please sign up for an account before you run this program"),
+            "last_name" => throw new ApplicationException("Please sign up for an account before you run this program"),
             "password" => AnsiConsole.Prompt(new TextPrompt<string>("[bold red]Enter 2fa password:[/] ")
                 .PromptStyle("red")
                 .Secret()),
@@ -472,9 +506,9 @@ static string RemoveNewlinesFromPath(string value)
 {
     var validCharacters = new char[value.Length];
     var next = 0;
-    foreach(var c in value)
+    foreach (var c in value)
     {
-        switch(c)
+        switch (c)
         {
             case '\r':
                 break;
@@ -483,6 +517,8 @@ static string RemoveNewlinesFromPath(string value)
             case ',':
                 break;
             case ':':
+                break;
+            case '*':
                 break;
             default:
                 validCharacters[next++] = c;
@@ -500,7 +536,8 @@ static Table BuildTable(Table table,
     int duplicateFiles,
     int filteredFiles,
     int existingFiles,
-    int erroredFiles) {
+    int erroredFiles)
+{
     var data1 = new BreakdownChartItem("Existing", existingFiles, Color.Green);
     var data2 = new BreakdownChartItem("Downloaded", downloadedFiles, Color.Purple);
     var data3 = new BreakdownChartItem("Errored", erroredFiles, Color.Red3);
