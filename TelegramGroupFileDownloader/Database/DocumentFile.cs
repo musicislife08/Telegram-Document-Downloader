@@ -7,17 +7,13 @@ namespace TelegramGroupFileDownloader.Database;
 
 public class DocumentFile
 {
-    [Unicode]
-    public string? Name { get; set; }
+    [Unicode] public string? Name { get; set; }
 
     public string? Extension { get; set; }
 
-    [Required]
-    [Unicode]
-    public string? FullName { get; set; }
+    [Required] [Unicode] public string? FullName { get; set; }
 
-    [Key]
-    public string? Hash { get; set; }
+    [Key] public string? Hash { get; set; }
 
-    public long TelegramId { get; set; }
+    public long? TelegramId { get; set; }
 }

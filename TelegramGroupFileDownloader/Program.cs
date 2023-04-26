@@ -1,5 +1,4 @@
-﻿using System.Security.Cryptography;
-using ByteSizeLib;
+﻿using ByteSizeLib;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
@@ -11,13 +10,14 @@ using TL;
 
 // ReSharper disable SwitchStatementMissingSomeEnumCasesNoDefault
 
-const string apiId = "2252206";
-const string apiHash = "4dcf9af0c05042ca938a0a44bfb522dd";
+const string apiId = "";
+const string apiHash = "";
 
 var date = DateTimeOffset.Now.ToString("u").Replace(':', '_');
 var errorLogFilePath = Path.Combine(Environment.CurrentDirectory, $"error-{date}.log");
 var duplicateLogFilePath = Path.Combine(Environment.CurrentDirectory, $"duplicate-{date}.csv");
 var filteredLogFilePath = Path.Combine(Environment.CurrentDirectory, $"filtered-{date}.log");
+
 Utilities.TestApplicationFolderPath();
 if (!File.Exists(duplicateLogFilePath))
     File.WriteAllText(duplicateLogFilePath, "Duplicate File,Original File,Link" + Environment.NewLine);
@@ -93,20 +93,17 @@ try
     if (!string.IsNullOrWhiteSpace(config.SessionPath))
         Utilities.EnsurePathExists(config.SessionPath);
     using var client = new WTelegram.Client(Config);
-    client.CollectAccessHash = true;
     client.PingInterval = 60;
     client.MaxAutoReconnects = 30;
-    //client.FilePartSize = 10240;
     await client.LoginUserIfNeeded();
     var groups = await client.Messages_GetAllChats();
     var group = (Channel)groups.chats.First(x => x.Value.Title == config.GroupName && x.Value.IsActive).Value;
-    var hc = client.GetAccessHashFor<Channel>(group.ID);
-    var msgs = await client.Messages_Search(new InputPeerChannel(group.ID, hc), string.Empty,
+    var msgs = await client.Messages_Search(new InputPeerChannel(group.ID, group.access_hash), string.Empty,
         new InputMessagesFilterDocument());
     var delete = args.Contains("--delete");
     try
     {
-        _ = await client.Channels_GetAdminLog(new InputChannel(group.ID, hc), string.Empty);
+        _ = await client.Channels_GetAdminLog(new InputChannel(group.ID, group.access_hash), string.Empty);
     }
     catch (RpcException)
     {
@@ -131,7 +128,7 @@ try
     var textData = Markup.FromInterpolated($"Found [green]{totalGroupFiles}[/] Documents");
     logs = AddLog(logs, textData);
     table = BuildTable(table, logs, totalGroupFiles, 0, 0, 0, 0, 0);
-    var channel = new InputPeerChannel(group.ID, hc);
+    var channel = new InputPeerChannel(group.ID, group.access_hash);
     await AnsiConsole.Live(table)
         .StartAsync(async ctx =>
         {
@@ -208,7 +205,7 @@ try
                         case PreDownloadProcessingDecision.Update:
                         {
                             await using var db = new DocumentContext();
-                            var uHash = GetFileHash(info.FullName);
+                            var uHash = Utilities.GetFileHash(info.FullName);
                             if (await db.DocumentFiles.AnyAsync(x => x.Hash == uHash))
                                 break;
                             await db.DocumentFiles.AddAsync(new DocumentFile()
@@ -216,7 +213,7 @@ try
                                 Name = info.Name,
                                 Extension = info.Extension.Remove(0, 1),
                                 FullName = info.FullName,
-                                Hash = GetFileHash(info.FullName),
+                                Hash = uHash,
                                 TelegramId = document.ID
                             });
                             await db.SaveChangesAsync();
@@ -336,7 +333,7 @@ try
                         continue;
                     }
 
-                    var hash = GetFileHash(info.FullName);
+                    var hash = Utilities.GetFileHash(info.FullName);
                     var postChoice = await DocumentManager.DecidePostDownload(info, hash);
                     await using var context = new DocumentContext();
                     if (postChoice == PostDownloadProcessingDecision.ProcessDuplicate)
@@ -482,14 +479,6 @@ catch (Exception ex)
     AnsiConsole.WriteException(ex);
 }
 
-string GetFileHash(string filename)
-{
-    using var sha256 = SHA256.Create();
-    using var stream = File.OpenRead(filename);
-    var hash = sha256.ComputeHash(stream);
-    return BitConverter.ToString(hash).Replace("-", "");
-}
-
 async Task<string> CalculateDirectorySize(DirectoryInfo directory)
 {
     var files = Array.Empty<FileInfo>();
@@ -519,6 +508,10 @@ static string RemoveNewlinesFromPath(string value)
             case ':':
                 break;
             case '*':
+                break;
+            case '\\':
+                break;
+            case '/':
                 break;
             default:
                 validCharacters[next++] = c;

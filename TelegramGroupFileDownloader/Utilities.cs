@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using Mono.Unix;
 using Mono.Unix.Native;
@@ -140,11 +141,11 @@ public static class Utilities
                         IsSuccessful = true
                     })
                     : (new()
-                {
-                    IsSuccessful = false,
-                    Exception = canAccessParent.Exception,
-                    Reason = $"Cannot Access parent directory of {info.FullName}"
-                });
+                    {
+                        IsSuccessful = false,
+                        Exception = canAccessParent.Exception,
+                        Reason = $"Cannot Access parent directory of {info.FullName}"
+                    });
             }
             catch (DirectoryNotFoundException e)
             {
@@ -171,10 +172,10 @@ public static class Utilities
                     Reason = $"{currentUser.Name} has write access to path {info.FullName}"
                 })
                 : (new()
-            {
-                IsSuccessful = false,
-                Reason = $"{currentUser.Name} does not have permission to {path}"
-            });
+                {
+                    IsSuccessful = false,
+                    Reason = $"{currentUser.Name} does not have permission to {path}"
+                });
         }
 
         try
@@ -191,6 +192,14 @@ public static class Utilities
                 IsSuccessful = false
             };
         }
+    }
+
+    public static string GetFileHash(string filename)
+    {
+        using var sha256 = SHA256.Create();
+        using var stream = File.OpenRead(filename);
+        var hash = sha256.ComputeHash(stream);
+        return BitConverter.ToString(hash).Replace("-", "");
     }
 
     // ReSharper disable once SuggestBaseTypeForParameter
