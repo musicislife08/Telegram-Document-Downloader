@@ -507,11 +507,15 @@ static string RemoveNewlinesFromPath(string value)
                 break;
             case ':':
                 break;
+            case ';':
+                break;
             case '*':
                 break;
             case '\\':
                 break;
             case '/':
+                break;
+            case '?':
                 break;
             default:
                 validCharacters[next++] = c;
